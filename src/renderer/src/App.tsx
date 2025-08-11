@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import Versions from './components/Versions'
+import { UnifiedConversationController } from './components/UnifiedConversationController'
 
 function App(): React.JSX.Element {
   const [selectedLLM, setSelectedLLM] = useState('gpt-4')
@@ -66,12 +67,12 @@ function App(): React.JSX.Element {
     setLoading(false)
   }
 
-  useEffect(() => {
-    initSelectAllPDF()
-  }, [])
+  // useEffect(() => {
+  //   initSelectAllPDF()
+  // }, [])
 
   return (
-    <>
+    <div className="view-mcp-content">
       <div className="text">
         Build an Electron app with <span className="react">React</span>
         &nbsp;and <span className="ts">TypeScript</span>
@@ -92,6 +93,10 @@ function App(): React.JSX.Element {
         </div>
       </div>
       <Versions></Versions>
+      
+      {/* Unified AI Conversation Chain (Gemini/HuggingFace/Claude) */}
+      <UnifiedConversationController />
+
       <div style={{ margin: '2em 0', padding: '1em', border: '1px solid #ccc', borderRadius: 8 }}>
         <div style={{ marginBottom: 12 }}>
           <label>LLMを選択: </label>
@@ -145,7 +150,7 @@ function App(): React.JSX.Element {
           <div style={{ whiteSpace: 'pre-wrap' }}>{response}</div>
         </div>
       </div>
-    </>
+    </div>
   )
 }
 

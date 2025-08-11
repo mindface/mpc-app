@@ -21,11 +21,14 @@
     "build:linux": "electron-vite build && electron-builder --linux"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.59.0",
     "@electron-toolkit/preload": "^3.0.1",
     "@electron-toolkit/utils": "^4.0.0",
     "@google/generative-ai": "^0.24.1",
+    "@huggingface/inference": "^4.6.1",
     "@modelcontextprotocol/sdk": "^1.13.0",
     "chokidar": "^4.0.3",
+    "cohere-ai": "^7.18.0",
     "dotenv": "^16.5.0",
     "electron-updater": "^6.3.9"
   },

@@ -4,29 +4,19 @@ import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs'
 import path from 'path'
-import { Server } from '@modelcontextprotocol/sdk/server/index.js'
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
-import {
-  CallToolRequestSchema,
-  ListToolsRequestSchema,
-  Tool,
-} from '@modelcontextprotocol/sdk/types.js'
-import chokidar from 'chokidar'
 import pdfParse from 'pdf-parse'
-import axios from 'axios'
-import { spawn } from 'child_process'
 import { z } from 'zod'
-import type { Readable, Writable } from 'stream'
 import dotenv from 'dotenv'
 import { GoogleGenerativeAI } from "@google/generative-ai";
+import { setupIPCHandlers } from './ipcHandlers'
+import { setupUnifiedIPCHandlers } from './ipcHandlersUnified'
 
 dotenv.config()
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI ?? "");
 
 // グローバルでMCPサーバーのインスタンスを保持
 let mcpServer: McpServer | null = null
-let mcpTransport: StdioServerTransport | null = null
 let pdfContexts: { [pdfPath: string]: string } = {} // PDFファイルパス→テキストコンテンツ
 let pdfSummaries: { [pdfPath: string]: { summary: string; contextId: string } } = {}
 
@@ -247,6 +237,11 @@ function createWindow(): void {
 app.whenReady().then( async () => {
   await prepareMcpContexts('data')
   await preloadAllPdfsToGemini() 
+  
+  // Setup IPC handlers for LLM Chain
+  setupIPCHandlers()
+  setupUnifiedIPCHandlers()
+  
   // Set app user model id for windows
   electronApp.setAppUserModelId('com.electron')
 
