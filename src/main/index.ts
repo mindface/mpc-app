@@ -11,6 +11,8 @@ import dotenv from 'dotenv'
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { setupIPCHandlers } from './ipcHandlers'
 import { setupUnifiedIPCHandlers } from './ipcHandlersUnified'
+import { createPDFMcpServer, registerPDFsFromFolder, getPDFDocuments } from './pdfMcpServer'
+import { SearchMatch, SearchResultForRenderer, PDFDocumentForRenderer, SearchResponse, PDFListResponse } from './types/pdfTypes'
 
 dotenv.config()
 const genAI = new GoogleGenerativeAI(process.env.GOOGLE_GENERATIVE_AI ?? "");
@@ -79,6 +81,75 @@ async function createMcpServer(): Promise<void> {
 
       return {
         content: [{ type: 'text', text: response }]
+      }
+    }
+  )
+
+  // PDF検索ツール（新しいPDF MCP Serverを使用）
+  mcpServer.registerTool('search-pdf-content',
+    {
+      title: 'Search PDF Content',
+      description: 'Search for text within PDF documents',
+      inputSchema: {
+        query: z.string().describe('Search query'),
+        maxResults: z.number().optional().describe('Maximum number of results')
+      }
+    },
+    async ({ query, maxResults = 5 }) => {
+      const pdfDocs = getPDFDocuments()
+      const results: SearchResultForRenderer[] = []
+      const queryLower = query.toLowerCase()
+      
+      for (const doc of Object.values(pdfDocs)) {
+        const contentLower = doc.content.toLowerCase()
+        const matches: SearchMatch[] = []
+        let startIndex = 0
+        
+        // Find all occurrences in this document
+        while (startIndex < contentLower.length && matches.length < 3) {
+          const index = contentLower.indexOf(queryLower, startIndex)
+          if (index === -1) break
+          
+          const contextStart = Math.max(0, index - 100)
+          const contextEnd = Math.min(doc.content.length, index + query.length + 100)
+          const context = doc.content.substring(contextStart, contextEnd)
+          
+          matches.push({
+            position: index,
+            context: context.trim(),
+            preview: context.replace(new RegExp(query, 'gi'), `**${query}**`)
+          })
+          
+          startIndex = index + query.length
+        }
+        
+        if (matches.length > 0) {
+          results.push({
+            filename: doc.filename,
+            docId: doc.id,
+            filePath: doc.filePath,
+            totalMatches: matches.length,
+            matches: matches,
+            metadata: {
+              pages: doc.metadata.pages,
+              size: doc.metadata.size,
+              createdAt: doc.metadata.createdAt.toISOString()
+            }
+          })
+        }
+        
+        if (results.length >= maxResults) break
+      }
+      
+      return {
+        content: [{
+          type: 'text',
+          text: JSON.stringify({
+            query,
+            totalResults: results.length,
+            results
+          }, null, 2)
+        }]
       }
     }
   )
@@ -213,6 +284,7 @@ function createWindow(): void {
   if (is.dev) {
     mainWindow.webContents.openDevTools()
   }
+    mainWindow.webContents.openDevTools()
 
   mainWindow.on('ready-to-show', () => {
     mainWindow.show()
@@ -236,7 +308,11 @@ function createWindow(): void {
 // Some APIs can only be used after this event occurs.
 app.whenReady().then( async () => {
   await prepareMcpContexts('data')
-  await preloadAllPdfsToGemini() 
+  // await preloadAllPdfsToGemini() 
+  
+  // Setup PDF MCP Server for search
+  await createPDFMcpServer()
+  await registerPDFsFromFolder('data')
   
   // Setup IPC handlers for LLM Chain
   setupIPCHandlers()
@@ -391,6 +467,8 @@ ${content}
     try {
       await prepareMcpContexts(folderPath)
       await preloadAllPdfsToGemini() 
+      // PDF検索サーバーにも再登録
+      await registerPDFsFromFolder(folderPath)
       return {
         success: true,
         count: Object.keys(pdfContexts).length
@@ -399,6 +477,96 @@ ${content}
       return {
         success: false,
         error: error
+      }
+    }
+  })
+
+  // PDF検索機能
+  ipcMain.handle('search-pdf-documents', async (_event, query: string, maxResults: number = 10): Promise<SearchResponse> => {
+    try {
+      const pdfDocs = getPDFDocuments()
+      const results: SearchResultForRenderer[] = []
+      const queryLower = query.toLowerCase()
+      
+      for (const doc of Object.values(pdfDocs)) {
+        const contentLower = doc.content.toLowerCase()
+        const matches: SearchMatch[] = []
+        let startIndex = 0
+        
+        // Find all occurrences
+        while (startIndex < contentLower.length && matches.length < maxResults) {
+          const index = contentLower.indexOf(queryLower, startIndex)
+          if (index === -1) break
+          
+          // Extract context around match
+          const contextStart = Math.max(0, index - 150)
+          const contextEnd = Math.min(doc.content.length, index + query.length + 150)
+          const context = doc.content.slice(contextStart, contextEnd)
+          
+          matches.push({
+            position: index,
+            context: context.trim(),
+            preview: context.replace(new RegExp(query, 'gi'), `**${query}**`)
+          })
+          
+          startIndex = index + query.length
+        }
+        
+        if (matches.length > 0) {
+          results.push({
+            filename: doc.filename,
+            docId: doc.id,
+            filePath: doc.filePath,
+            totalMatches: matches.length,
+            matches: matches.slice(0, 3), // Show top 3 matches per document
+            metadata: {
+              pages: doc.metadata.pages,
+              size: doc.metadata.size,
+              createdAt: doc.metadata.createdAt.toISOString()
+            }
+          })
+        }
+        
+        if (results.length >= maxResults) break
+      }
+      
+      return {
+        success: true,
+        query,
+        totalDocuments: Object.keys(pdfDocs).length,
+        resultsFound: results.length,
+        results
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: (error as Error).message
+      }
+    }
+  })
+
+  // 登録済みPDF一覧取得
+  ipcMain.handle('get-registered-pdfs', async (): Promise<PDFListResponse> => {
+    try {
+      const pdfDocs = getPDFDocuments()
+      const documentList: PDFDocumentForRenderer[] = Object.values(pdfDocs).map(doc => ({
+        docId: doc.id,
+        filename: doc.filename,
+        filePath: doc.filePath,
+        pages: doc.metadata.pages,
+        contentLength: doc.content.length,
+        createdAt: doc.metadata.createdAt.toISOString()
+      }))
+      
+      return {
+        success: true,
+        totalDocuments: documentList.length,
+        documents: documentList
+      }
+    } catch (error) {
+      return {
+        success: false,
+        error: (error as Error).message
       }
     }
   })

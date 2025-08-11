@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react'
 import Versions from './components/Versions'
 import { UnifiedConversationController } from './components/UnifiedConversationController'
+import { PDFSearchComponent } from './components/PDFSearchComponent'
 
 function App(): React.JSX.Element {
   const [selectedLLM, setSelectedLLM] = useState('gpt-4')
@@ -95,7 +96,10 @@ function App(): React.JSX.Element {
       <Versions></Versions>
       
       {/* Unified AI Conversation Chain (Gemini/HuggingFace/Claude) */}
-      <UnifiedConversationController />
+      {/* <UnifiedConversationController /> */}
+      
+      {/* PDF Search Component */}
+      <PDFSearchComponent />
 
       <div style={{ margin: '2em 0', padding: '1em', border: '1px solid #ccc', borderRadius: 8 }}>
         <div style={{ marginBottom: 12 }}>
